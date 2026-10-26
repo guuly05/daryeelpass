@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CANCELLED
+  CHECKED_IN
+  COMPLETED
+}
+
+model Clinic {
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  nameKey       String        @map("name_key")
+  locationKey   String        @map("location_key")
+  timezone      String        @default("Africa/Mogadishu")
+  active        Boolean       @default(true)
+  services      Service[]
+  staff         StaffUser[]
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  @@map("clinics")
+}
+
+model Service {
+  id              String             @id @default(cuid())
+  clinicId        String             @map("clinic_id")
+  slug            String
+  nameKey         String             @map("name_key")
+  durationMinutes Int                @map("duration_minutes")
+  active          Boolean            @default(true)
+  clinic          Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  slots           AppointmentSlot[]
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@unique([clinicId, slug])
+  @@map("services")
+}
+
+model AppointmentSlot {
+  id          String        @id @default(cuid())
+  serviceId   String        @map("service_id")
+  startsAt    DateTime      @map("starts_at")
+  capacity    Int
+  bookedCount Int           @default(0) @map("booked_count")
+  active      Boolean       @default(true)
+  service     Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@unique([serviceId, startsAt])
+  @@index([startsAt, active])
+  @@map("appointment_slots")
+}
+
+model Patient {
+  id          String           @id @default(cuid())
+  displayName String           @map("display_name")
+  active      Boolean          @default(true)
+  identities  IdentityLink[]
+  appointments Appointment[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@map("patients")
+}
+
+model IdentityLink {
+  id        String   @id @default(cuid())
+  issuer    String
+  subject   String
+  patientId String   @map("patient_id")
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([issuer, subject])
+  @@map("identity_links")
+}
+
+model Appointment {
+  id        String            @id @default(cuid())
+  patientId String            @map("patient_id")
+  slotId    String            @map("slot_id")
+  status    AppointmentStatus @default(BOOKED)
+  patient   Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  slot      AppointmentSlot   @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  tokens    CheckInToken[]
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  @@index([patientId, status])
+  @@map("appointments")
+}
+
+model CheckInToken {
+  id            String      @id @default(cuid())
+  tokenHash     String      @unique @map("token_hash")
+  appointmentId String      @map("appointment_id")
+  expiresAt     DateTime    @map("expires_at")
+  usedAt        DateTime?   @map("used_at")
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([appointmentId, expiresAt])
+  @@map("check_in_tokens")
+}
+
+model StaffUser {
+  id        String   @id @default(cuid())
+  clinicId  String   @map("clinic_id")
+  displayName String @map("display_name")
+  active    Boolean  @default(true)
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("staff_users")
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  actorRole    String   @map("actor_role")
+  actorId      String?  @map("actor_id")
+  eventType    String   @map("event_type")
+  resourceType String   @map("resource_type")
+  resourceId   String   @map("resource_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}

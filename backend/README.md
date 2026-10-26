@@ -24,6 +24,12 @@ The API listens on `http://localhost:4000`. `GET /health` checks the database co
 
 To stop the local database later, run `docker-compose down`. The named volume keeps the sample database across restarts. `docker-compose down -v` deletes that local database volume.
 
+## Tests
+
+- `npm run test:unit` runs database-free unit tests for token generation and appointment formatting.
+- `npm test` runs unit tests and API integration tests. The integration tests need the migrated and seeded PostgreSQL database from the setup above.
+- GitHub Actions runs the full suite on every push and pull request using a disposable PostgreSQL service, then checks for high-severity dependency advisories.
+
 ## API overview
 
 All application routes use the `/api/v1` prefix.

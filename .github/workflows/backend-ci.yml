@@ -1,0 +1,59 @@
+name: Backend CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: daryeelpass
+          POSTGRES_PASSWORD: daryeelpass
+          POSTGRES_DB: daryeelpass_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U daryeelpass -d daryeelpass_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: test
+      DEMO_MODE: 'true'
+      SESSION_SECRET: test-only-session-secret-long-enough-for-ci
+      FRONTEND_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgresql://daryeelpass:daryeelpass@localhost:5432/daryeelpass_test?schema=public
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Generate Prisma client
+        run: npm run db:generate
+      - name: Apply database migrations
+        run: npm run db:deploy
+      - name: Seed synthetic test data
+        run: npm run db:seed
+      - name: Run unit and API integration tests
+        run: npm test
+      - name: Check dependency advisories
+        run: npm audit --audit-level=high

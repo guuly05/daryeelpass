@@ -55,5 +55,11 @@ jobs:
         run: npm run db:seed
       - name: Run unit and API integration tests
         run: npm test
-      - name: Check dependency advisories
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: .
+      - name: Build frontend
+        run: npm run build
+        working-directory: .
+      - name: Check backend dependency advisories
         run: npm audit --audit-level=high

@@ -13,7 +13,10 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test:unit": "node --test test/unit/formatters.test.js test/unit/tokens.test.js",
+    "test:integration": "node --test test/integration/api.test.js",
+    "test": "npm run test:unit && npm run test:integration"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

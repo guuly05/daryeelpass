@@ -1,6 +1,6 @@
 # DaryeelPass
 
-A Somali and English clinic appointment and check-in PWA prototype. The current frontend uses sample data only; booking, sign-in, and QR passes are not connected to a backend or MOSIP environment yet.
+A Somali and English clinic appointment and check-in PWA prototype with a JavaScript API backend. This remains a synthetic-data learning project; it is not for real clinic visits or real patient information.
 
 ## Run locally
 
@@ -26,3 +26,7 @@ Use the language switch in the top bar. Book a sample visit to see the appointme
 npm run build
 npm run preview
 ```
+
+## Backend
+
+The Express API and PostgreSQL setup live in [`backend/`](backend/README.md). Follow that README to start PostgreSQL, migrate and seed the database, then run the API. The current frontend is still using local sample state; wiring it to the API is the next step. eSignet authentication is not connected yet.

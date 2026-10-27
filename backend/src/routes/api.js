@@ -55,16 +55,27 @@ apiRouter.post('/auth/logout', (req, res) => {
 apiRouter.get('/clinics', async (_req, res) => {
   const clinics = await prisma.clinic.findMany({
     where: { active: true },
-    orderBy: { nameKey: 'asc' },
-    include: { services: { where: { active: true }, orderBy: { nameKey: 'asc' } } }
+    orderBy: { publicName: 'asc' },
+    include: {
+      services: { where: { active: true }, orderBy: { nameKey: 'asc' } },
+      providers: { where: { active: true }, orderBy: { displayName: 'asc' } }
+    }
   });
   return res.json({ data: clinics.map((clinic) => ({
     id: clinic.id,
     slug: clinic.slug,
-    nameKey: clinic.nameKey,
+    name: clinic.publicName ?? clinic.nameKey,
     locationKey: clinic.locationKey,
+    address: clinic.publicAddress,
+    phone: clinic.phone,
+    email: clinic.email,
+    websiteUrl: clinic.websiteUrl,
+    appointmentUrl: clinic.appointmentUrl,
+    sourceUrl: clinic.sourceUrl,
+    verifiedAt: clinic.verifiedAt?.toISOString() ?? null,
     timezone: clinic.timezone,
-    services: clinic.services.map(({ id, slug, nameKey, durationMinutes }) => ({ id, slug, nameKey, durationMinutes }))
+    services: clinic.services.map(({ id, slug, nameKey }) => ({ id, slug, nameKey })),
+    providers: clinic.providers.map(({ id, displayName, specialty, profileUrl, sourceUrl }) => ({ id, displayName, specialty, profileUrl, sourceUrl }))
   })) });
 });
 

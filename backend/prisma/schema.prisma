@@ -18,15 +18,41 @@ model Clinic {
   id            String        @id @default(cuid())
   slug          String        @unique
   nameKey       String        @map("name_key")
+  publicName    String?       @map("public_name")
   locationKey   String        @map("location_key")
+  publicAddress String?       @map("public_address")
+  phone         String?
+  email         String?
+  websiteUrl    String?       @map("website_url")
+  appointmentUrl String?      @map("appointment_url")
+  sourceUrl     String?       @map("source_url")
+  verifiedAt    DateTime?     @map("verified_at")
   timezone      String        @default("Africa/Mogadishu")
   active        Boolean       @default(true)
   services      Service[]
+  providers     ClinicProvider[]
   staff         StaffUser[]
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
   @@map("clinics")
+}
+
+model ClinicProvider {
+  id          String   @id @default(cuid())
+  clinicId    String   @map("clinic_id")
+  displayName String   @map("display_name")
+  specialty   String
+  profileUrl  String?  @map("profile_url")
+  sourceUrl   String   @map("source_url")
+  active      Boolean  @default(true)
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([clinicId, displayName, specialty])
+  @@index([clinicId, active])
+  @@map("clinic_providers")
 }
 
 model Service {

@@ -71,16 +71,20 @@ test('requires a patient session and rejects disallowed browser origins', async 
   assert.equal(forbiddenOrigin.data.error.code, 'ORIGIN_NOT_ALLOWED');
 });
 
-test('lists clinics and available slots with localized display keys', async () => {
+test('lists sourced Hargeisa clinic details without claiming unconnected schedules', async () => {
   const clinics = await request('/api/v1/clinics');
   assert.equal(clinics.response.status, 200);
-  assert.ok(clinics.data.data.some((clinic) => clinic.services.some((service) => service.nameKey === 'generalConsult')));
+  const alIhsan = clinics.data.data.find((clinic) => clinic.slug === 'al-ihsan-specialist-hospital');
+  assert.ok(alIhsan);
+  assert.equal(alIhsan.name, 'Al Ihsan Specialist Hospital');
+  assert.ok(alIhsan.sourceUrl);
+  assert.ok(alIhsan.services.some((service) => service.nameKey === 'cardiology'));
+  assert.ok(alIhsan.providers.some((provider) => provider.displayName === 'Dr Mohamed Mohamud (Dr Shiine)'));
+  assert.ok(alIhsan.providers.every((provider) => provider.sourceUrl));
 
   const slots = await request('/api/v1/slots');
   assert.equal(slots.response.status, 200);
-  assert.ok(slots.data.data.length > 0);
-  assert.ok(slots.data.data.every((slot) => slot.available > 0));
-  assert.ok(slots.data.data.every((slot) => slot.clinic.timezone === 'Africa/Mogadishu'));
+  assert.deepEqual(slots.data.data, []);
 });
 
 test('books, cancels once, and releases the reserved slot capacity', async () => {

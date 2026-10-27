@@ -6,6 +6,8 @@ import { requireRole } from '../middleware/auth.js';
 import { HttpError } from '../http-error.js';
 import { appointmentDetails, formatAppointment } from '../formatters.js';
 import { createOpaqueToken, hashToken } from '../tokens.js';
+import { createPkcePair, loadEsignetClient, makePrivateKeyAssertion, verifyEsignetJwt } from '../esignet.js';
+import { randomBytes } from 'node:crypto';
 
 export const apiRouter = Router();
 
@@ -224,6 +226,96 @@ apiRouter.get('/staff/queue', requireRole('staff'), async (req, res) => {
   })) });
 });
 
-apiRouter.get('/auth/esignet', (_req, res) => {
-  return res.status(501).json({ error: { code: 'ESIGNET_NOT_CONFIGURED', message: 'eSignet relying-party settings are not configured yet.' } });
+apiRouter.get('/auth/esignet', async (req, res) => {
+  const client = await loadEsignetClient();
+  const { verifier, challenge } = createPkcePair();
+  const state = randomBytes(32).toString('base64url');
+  const nonce = randomBytes(32).toString('base64url');
+  req.session.oidcTransaction = { state, nonce, verifier, createdAt: Date.now() };
+
+  const authorization = new URL(client.metadata.authorization_endpoint);
+  authorization.searchParams.set('client_id', client.clientId);
+  authorization.searchParams.set('redirect_uri', client.redirectUri);
+  authorization.searchParams.set('response_type', 'code');
+  authorization.searchParams.set('scope', 'openid profile');
+  authorization.searchParams.set('state', state);
+  authorization.searchParams.set('nonce', nonce);
+  authorization.searchParams.set('code_challenge', challenge);
+  authorization.searchParams.set('code_challenge_method', 'S256');
+  return res.redirect(authorization.toString());
+});
+
+apiRouter.get('/auth/esignet/callback', async (req, res) => {
+  const frontendUrl = new URL(config.FRONTEND_ORIGIN);
+  const fail = (reason) => {
+    req.session = null;
+    frontendUrl.searchParams.set('auth_error', reason);
+    return res.redirect(frontendUrl.toString());
+  };
+  if (req.query.error) return fail('provider');
+
+  const transaction = req.session?.oidcTransaction;
+  const returnedState = typeof req.query.state === 'string' ? req.query.state : '';
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  if (!transaction || Date.now() - transaction.createdAt > 10 * 60 * 1000 || !returnedState || returnedState !== transaction.state || !code) {
+    return fail('invalid_response');
+  }
+
+  const client = await loadEsignetClient();
+  const assertion = makePrivateKeyAssertion({ clientId: client.clientId, audience: client.metadata.token_endpoint, privateKey: client.privateKey, kid: client.kid });
+  const tokenResponse = await fetch(client.metadata.token_endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_id: client.clientId,
+      redirect_uri: client.redirectUri,
+      code_verifier: transaction.verifier,
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: assertion
+    })
+  });
+  if (!tokenResponse.ok) {
+    const tokenError = await tokenResponse.json().catch(() => ({}));
+    console.warn('eSignet token exchange rejected the request', {
+      status: tokenResponse.status,
+      error: tokenError.error,
+      description: tokenError.error_description
+    });
+    return fail('token_exchange');
+  }
+  const tokenSet = await tokenResponse.json();
+  if (typeof tokenSet.id_token !== 'string' || typeof tokenSet.access_token !== 'string') return fail('missing_token');
+
+  const idClaims = await verifyEsignetJwt(tokenSet.id_token, {
+    client,
+    expectedAudience: client.clientId,
+    expectedNonce: transaction.nonce
+  });
+  const userInfoResponse = await fetch(client.metadata.userinfo_endpoint, {
+    headers: { authorization: `Bearer ${tokenSet.access_token}`, accept: 'application/jwt' }
+  });
+  if (!userInfoResponse.ok) return fail('userinfo');
+  const userInfoClaims = await verifyEsignetJwt(await userInfoResponse.text(), { client, userInfo: true });
+  if (userInfoClaims.sub !== idClaims.sub) return fail('subject_mismatch');
+
+  const nameClaim = userInfoClaims.name ?? userInfoClaims['name#en'];
+  const displayName = typeof nameClaim === 'string' && nameClaim.trim()
+    ? nameClaim.trim().slice(0, 120)
+    : `eSignet patient ${idClaims.sub.slice(0, 8)}`;
+  const identity = await prisma.identityLink.upsert({
+    where: { issuer_subject: { issuer: client.issuer, subject: idClaims.sub } },
+    create: {
+      issuer: client.issuer,
+      subject: idClaims.sub,
+      patient: { create: { displayName } }
+    },
+    update: {},
+    include: { patient: { select: { id: true } } }
+  });
+
+  req.session = { userId: identity.patient.id, role: 'patient' };
+  frontendUrl.searchParams.set('auth', 'success');
+  return res.redirect(frontendUrl.toString());
 });

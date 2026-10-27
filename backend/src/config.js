@@ -10,8 +10,8 @@ const envSchema = z.object({
   DEMO_MODE: z.enum(['true', 'false']).default('true'),
   ESIGNET_ISSUER_URL: z.string().optional(),
   ESIGNET_CLIENT_ID: z.string().optional(),
-  ESIGNET_CLIENT_SECRET: z.string().optional(),
-  ESIGNET_REDIRECT_URI: z.string().url().optional()
+  ESIGNET_REDIRECT_URI: z.string().url().optional(),
+  ESIGNET_CLIENT_CONFIG_FILE: z.string().default('.secrets/esignet-client.json')
 });
 
 export const config = envSchema.parse(process.env);

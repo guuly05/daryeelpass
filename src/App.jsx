@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { copy } from './copy.js';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/v1';
+
 const visitSeed = {
   id: 'demo-visit-01',
   day: '27',
@@ -77,6 +79,7 @@ function App() {
   const [selectedService, setSelectedService] = useState('generalConsult');
   const [passAppointment, setPassAppointment] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [authUser, setAuthUser] = useState(null);
   const [toast, setToast] = useState('');
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -85,6 +88,23 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem('daryeel-language', language);
     document.documentElement.lang = language;
+  }, [language]);
+
+  useEffect(() => {
+    const currentUrl = new URL(window.location.href);
+    const authError = currentUrl.searchParams.get('auth_error');
+    if (currentUrl.searchParams.has('auth') || authError) {
+      currentUrl.searchParams.delete('auth');
+      currentUrl.searchParams.delete('auth_error');
+      window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+      if (authError) setToast(t.signInFailed);
+      else setToast(t.signedIn);
+    }
+
+    fetch(`${API_BASE}/auth/session`, { credentials: 'include' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((session) => setAuthUser(session?.authenticated && session.role === 'patient' ? session.user : null))
+      .catch(() => setAuthUser(null));
   }, [language]);
 
   useEffect(() => {
@@ -140,6 +160,12 @@ function App() {
   }
 
   const openPass = (appointment) => setPassAppointment(appointment);
+  const signIn = () => window.location.assign(`${API_BASE}/auth/esignet`);
+  async function signOut() {
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    setAuthUser(null);
+    setToast(t.signedOut);
+  }
 
   return (
     <div className="app-shell">
@@ -164,16 +190,16 @@ function App() {
             <button type="button" className={language === 'so' ? 'is-active' : ''} onClick={() => setLanguage('so')} aria-pressed={language === 'so'}>SO</button>
             <button type="button" className={language === 'en' ? 'is-active' : ''} onClick={() => setLanguage('en')} aria-pressed={language === 'en'}>EN</button>
           </div>
-          <button className="profile-button" type="button" onClick={() => setShowLogin(true)} aria-label={t.signIn}>
-            <span className="profile-avatar">A</span>
-            <span className="profile-label">{t.profile}</span>
+          <button className="profile-button" type="button" onClick={authUser ? signOut : () => setShowLogin(true)} aria-label={authUser ? t.signOut : t.signIn}>
+            <span className="profile-avatar">{authUser?.displayName?.charAt(0)?.toUpperCase() || 'A'}</span>
+            <span className="profile-label">{authUser?.displayName || t.profile}</span>
             <ChevronDown size={16} strokeWidth={1.8} />
           </button>
         </div>
       </header>
 
       <main id="main" className="main-content">
-        {screen === 'home' && <HomeScreen t={t} appointments={appointments} onBook={startBooking} onPass={openPass} onSignIn={() => setShowLogin(true)} />}
+        {screen === 'home' && <HomeScreen t={t} appointments={appointments} authUser={authUser} onBook={startBooking} onPass={openPass} onSignIn={signIn} />}
         {screen === 'booking' && (
           <BookingScreen
             t={t}
@@ -207,21 +233,21 @@ function App() {
         </button>
       </nav>
 
-      {showLogin && <LoginDialog t={t} onClose={() => setShowLogin(false)} onContinue={() => { setShowLogin(false); setToast(t.noBackend); }} />}
+      {showLogin && <LoginDialog t={t} onClose={() => setShowLogin(false)} onContinue={signIn} />}
       {passAppointment && <PassDialog t={t} appointment={passAppointment} onClose={() => setPassAppointment(null)} />}
       {toast && <div className="toast" role="status"><Check size={17} strokeWidth={2.2} />{toast}</div>}
     </div>
   );
 }
 
-function HomeScreen({ t, appointments, onBook, onPass, onSignIn }) {
+function HomeScreen({ t, appointments, authUser, onBook, onPass, onSignIn }) {
   const upcoming = appointments[0];
   return (
     <>
       <section className="welcome-block">
         <div>
           <p className="preview-label"><span className="preview-label-icon"><Check size={13} strokeWidth={2.4} /></span>{t.preview}</p>
-          <h1>{t.greeting}</h1>
+          <h1>{authUser ? `${t.welcomeBack}, ${authUser.displayName}` : t.greeting}</h1>
           <p className="welcome-copy">{t.welcomeLine}</p>
         </div>
         <button className="quiet-button esignet-button" type="button" onClick={onSignIn}>

@@ -27,7 +27,7 @@ app.use(express.json({ limit: '16kb' }));
 app.use(cookieSession({
   name: 'daryeelpass.session',
   keys: [config.SESSION_SECRET],
-  maxAge: 8 * 60 * 60 * 1000,
+  maxAge: 14 * 24 * 60 * 60 * 1000,
   httpOnly: true,
   sameSite: 'lax',
   secure: config.isProduction,

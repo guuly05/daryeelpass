@@ -5,13 +5,21 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-enum AppointmentStatus {
-  BOOKED
+enum UserRole {
+  PATIENT
+  STAFF
+  CLINIC_ADMIN
+  SYSTEM_ADMIN
+}
+
+enum BookingRequestStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
   CANCELLED
-  CHECKED_IN
-  COMPLETED
 }
 
 model Clinic {
@@ -31,7 +39,9 @@ model Clinic {
   active        Boolean       @default(true)
   services      Service[]
   providers     ClinicProvider[]
-  staff         StaffUser[]
+  users         User[]
+  bookingRequests BookingRequest[]
+  staffInvites   StaffInvite[]
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
@@ -64,6 +74,7 @@ model Service {
   active          Boolean            @default(true)
   clinic          Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   slots           AppointmentSlot[]
+  bookingRequests BookingRequest[]
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
@@ -78,8 +89,8 @@ model AppointmentSlot {
   capacity    Int
   bookedCount Int           @default(0) @map("booked_count")
   active      Boolean       @default(true)
+  source      String        @default("staff")
   service     Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  appointments Appointment[]
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
@@ -88,78 +99,77 @@ model AppointmentSlot {
   @@map("appointment_slots")
 }
 
-model Patient {
-  id          String           @id @default(cuid())
-  displayName String           @map("display_name")
-  active      Boolean          @default(true)
-  identities  IdentityLink[]
-  appointments Appointment[]
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-
-  @@map("patients")
-}
-
-model IdentityLink {
-  id        String   @id @default(cuid())
-  issuer    String
-  subject   String
-  patientId String   @map("patient_id")
-  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@unique([issuer, subject])
-  @@map("identity_links")
-}
-
-model Appointment {
-  id        String            @id @default(cuid())
-  patientId String            @map("patient_id")
-  slotId    String            @map("slot_id")
-  status    AppointmentStatus @default(BOOKED)
-  patient   Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  slot      AppointmentSlot   @relation(fields: [slotId], references: [id], onDelete: Restrict)
-  tokens    CheckInToken[]
-  createdAt DateTime          @default(now()) @map("created_at")
-  updatedAt DateTime          @updatedAt @map("updated_at")
-
-  @@index([patientId, status])
-  @@map("appointments")
-}
-
-model CheckInToken {
-  id            String      @id @default(cuid())
-  tokenHash     String      @unique @map("token_hash")
-  appointmentId String      @map("appointment_id")
-  expiresAt     DateTime    @map("expires_at")
-  usedAt        DateTime?   @map("used_at")
-  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  createdAt     DateTime    @default(now()) @map("created_at")
-
-  @@index([appointmentId, expiresAt])
-  @@map("check_in_tokens")
-}
-
-model StaffUser {
-  id        String   @id @default(cuid())
-  clinicId  String   @map("clinic_id")
-  displayName String @map("display_name")
-  active    Boolean  @default(true)
-  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Restrict)
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@map("staff_users")
-}
-
-model AuditEvent {
+model User {
   id           String   @id @default(cuid())
-  actorRole    String   @map("actor_role")
-  actorId      String?  @map("actor_id")
-  eventType    String   @map("event_type")
-  resourceType String   @map("resource_type")
-  resourceId   String   @map("resource_id")
+  email        String   @unique
+  displayName  String   @map("display_name")
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(PATIENT)
+  clinicId     String?  @map("clinic_id")
+  active       Boolean  @default(true)
+  clinic       Clinic?  @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  sessions     LoginSession[]
+  requests     BookingRequest[]
+  systemSetup  SystemSetupState?
   createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  @@index([resourceType, resourceId, createdAt])
-  @@map("audit_events")
+  @@index([clinicId, role, active])
+  @@map("users")
+}
+
+model SystemSetupState {
+  id            String   @id @default("singleton")
+  systemAdminId String   @unique @map("system_admin_id")
+  completedAt   DateTime @default(now()) @map("completed_at")
+  systemAdmin   User     @relation(fields: [systemAdminId], references: [id], onDelete: Restrict)
+
+  @@map("system_setup_state")
+}
+
+model LoginSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique @map("token_hash")
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, expiresAt])
+  @@map("login_sessions")
+}
+
+model StaffInvite {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique @map("token_hash")
+  email     String
+  clinicId  String   @map("clinic_id")
+  role      UserRole @default(STAFF)
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email, expiresAt])
+  @@map("staff_invites")
+}
+
+model BookingRequest {
+  id        String               @id @default(cuid())
+  userId    String               @map("user_id")
+  clinicId  String               @map("clinic_id")
+  serviceId String               @map("service_id")
+  startsAt  DateTime             @map("starts_at")
+  phone     String
+  source    String               @default("suggested")
+  status    BookingRequestStatus @default(PENDING)
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  clinic    Clinic               @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  service   Service              @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+
+  @@index([userId, status, startsAt])
+  @@index([clinicId, status, startsAt])
+  @@map("booking_requests")
 }

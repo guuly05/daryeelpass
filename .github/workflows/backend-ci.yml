@@ -36,6 +36,7 @@ jobs:
       SESSION_SECRET: test-only-session-secret-long-enough-for-ci
       FRONTEND_ORIGIN: http://localhost:5173
       DATABASE_URL: postgresql://daryeelpass:daryeelpass@localhost:5432/daryeelpass_test?schema=public
+      DIRECT_URL: postgresql://daryeelpass:daryeelpass@localhost:5432/daryeelpass_test?schema=public
     steps:
       - name: Check out source
         uses: actions/checkout@v4

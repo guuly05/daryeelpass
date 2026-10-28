@@ -9,17 +9,18 @@ Node.js API for the DaryeelPass Hargeisa directory and local booking-request dem
 - Prisma ORM 6 for the data model and migrations
 - Email/password accounts with scrypt password hashes and revocable, hashed database sessions
 - PostgreSQL row-level security for accounts, sessions, staff invites, booking requests, and staff-entered slots
+- First-run system admin bootstrap, system-wide oversight, and clinic-scoped admin/staff roles
 
 ## Run locally
 
-1. Copy `.env.example` to `.env`; replace `SESSION_SECRET` and the runtime DB password with unique local values. Keep `DATABASE_URL` on the restricted `daryeelpass_app` role and `DIRECT_URL` on the migration owner.
+1. Copy `.env.example` to `.env`; replace `SESSION_SECRET`, `SYSTEM_SETUP_KEY`, and the runtime DB password with unique local values. Generate the setup key with a secure random generator; the sample placeholder intentionally prevents the API from starting until replaced. Keep `DATABASE_URL` on the restricted `daryeelpass_app` role and `DIRECT_URL` on the migration owner.
 2. Start Docker Desktop, then start PostgreSQL with Docker Compose: `docker-compose up -d`.
 3. Install packages: `npm install`.
 4. Generate the Prisma client and deploy migrations: `npm run db:generate`, then `npm run db:deploy`.
 5. Create the restricted runtime role after the first migration: `psql "$DIRECT_URL" -v runtime_password="<same local runtime password as DATABASE_URL>" -f prisma/roles.sql`. The role is `NOSUPERUSER`, `NOBYPASSRLS`, and does not own tables. Use this runtime role for all API calls.
 6. Seed the public Hargeisa clinic directory with `npm run db:seed`.
-7. Create the first local admin by setting `ADMIN_EMAIL`, `ADMIN_NAME`, and `ADMIN_PASSWORD` (10+ characters) in the environment, then run `npm run admin:create`. The command refuses to create another admin if one already exists. Remove `ADMIN_PASSWORD` from the environment afterward.
-8. From the repository root, run `npm run dev` to start the API and frontend together. To run only the API, run `npm run dev` from `backend/`.
+7. From the repository root, run `npm run dev` to start the API and frontend together. The first-run system setup screen accepts the `SYSTEM_SETUP_KEY` and creates the initial system admin. A persistent database marker keeps the one-time flow closed after setup, including if that account is later disabled. Remove `SYSTEM_SETUP_KEY` from the environment after setup.
+8. The system admin signs in and creates clinic-admin invitations from the system dashboard. Clinic admins can invite staff for their own clinic.
 
 The API listens on `http://localhost:4000`. `GET /health` checks the database connection. Vite's development server defaults to `http://localhost:5173`, which is the configured `FRONTEND_ORIGIN`. If you use the Vite preview server on port `4173`, change `FRONTEND_ORIGIN` to that origin. If this database volume was initialized before the runtime role was added, run the migration and `roles.sql` steps against that existing database.
 
@@ -38,6 +39,8 @@ All application routes use the `/api/v1` prefix.
 | `GET` | `/auth/session` | Public | Check the current session |
 | `POST` | `/auth/register` | Public | Create a patient account |
 | `POST` | `/auth/login` | Public | Sign in with email and password |
+| `GET` | `/system/setup-status` | Public | Show first-run setup until the persistent setup marker is set |
+| `POST` | `/system/setup` | Public + setup key | Atomically create the one-time first system admin |
 | `POST` | `/auth/logout` | Session | Revoke the current server-side session |
 | `POST` | `/auth/accept-staff-invite` | Public | Accept a one-time staff invite |
 | `GET` | `/clinics` | Public | List clinics, public contact details, departments, listed clinicians, and their source links |
@@ -45,10 +48,13 @@ All application routes use the `/api/v1` prefix.
 | `GET` | `/booking-requests` | Patient | List own requests |
 | `POST` | `/booking-requests` | Patient | Create a pending request with contact phone |
 | `PATCH` | `/booking-requests/:id/cancel` | Patient | Cancel own pending request |
-| `GET` | `/staff/booking-requests` | Staff/admin | List requests for assigned clinic (or all, for admin) |
-| `PATCH` | `/staff/booking-requests/:id` | Staff/admin | Mark a pending request confirmed in app or declined |
-| `POST` | `/staff/availability` | Staff/admin | Enter clinic schedule times |
-| `POST` | `/admin/staff-invites` | Admin | Create one-time clinic-scoped staff invite |
+| `GET` | `/staff/booking-requests` | Staff, clinic admin, system admin | List requests for assigned clinic (or all, for system admin) |
+| `PATCH` | `/staff/booking-requests/:id` | Staff, clinic admin, system admin | Mark a pending request confirmed in app or declined |
+| `POST` | `/staff/availability` | Staff, clinic admin, system admin | Enter clinic schedule times |
+| `POST` | `/system/clinic-admin-invites` | System admin | Invite a clinic admin |
+| `GET` | `/system/overview` | System admin | View system-wide clinic, account, and request counts |
+| `PATCH` | `/system/clinic-admins/:id/status` | System admin | Disable or re-enable a clinic admin; disabling revokes their sessions |
+| `POST` | `/clinic-admin/staff-invites` | Clinic admin | Invite staff to the admin's clinic |
 
 The directory is not a clinic partnership list. Suggested availability is illustrative. A staff-entered time and a request marked confirmed inside DaryeelPass are not a live clinic schedule reservation or clinic confirmation.
 
@@ -62,9 +68,10 @@ Responses use `{ "data": ... }` on success and `{ "error": { "code", "message" }
 - The runtime database login must be a separate non-owner role with `NOBYPASSRLS`; migrations use `DIRECT_URL`.
 - New accounts are not email verified, and password reset delivery is not configured.
 - Staff invitations are one-time random tokens; only their SHA-256 hashes are stored, and invites expire after seven days.
+- Public signup can create patient accounts only. The system setup key is required to create the first system admin, and a PostgreSQL advisory transaction lock prevents competing first-admin claims. A persistent database marker ensures first-run setup cannot reopen. System admins oversee all clinics, booking requests, and clinic admins; they can invite, disable, and re-enable clinic admins. Clinic admins only manage their assigned clinic and can invite staff there.
 - Directory clinician names and affiliations reflect clinic-published pages; they are not an independent verification of credentials or current availability.
 - Do not use real patient names, national identifiers, biometrics, appointment data, or medical information in this local setup.
 
 ## Repository boundary
 
-The staff invite link is copied manually by the DaryeelPass admin; no email provider is configured. The runtime DB user can set the application context variables used by RLS, so RLS protects against accidental missing filters within parameterized API paths; it is not a boundary against arbitrary SQL execution under the API role. Production use needs a separate security review and external clinic integration.
+Clinic-admin and staff invite links are copied manually; no email provider is configured. The runtime DB user can set the application context variables used by RLS, so RLS protects against accidental missing filters within parameterized API paths; it is not a boundary against arbitrary SQL execution under the API role. Production use needs a separate security review and external clinic integration.

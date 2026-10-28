@@ -198,7 +198,7 @@ From the repository root:
 docker compose -f backend\docker-compose.yml up -d
 ```
 
-This starts PostgreSQL on host port `5433` and creates a named volume called `daryeelpass-postgres`. The volume persists the database when the container is stopped and restarted.
+This starts PostgreSQL on host port `5433` and creates a named Compose volume for `daryeelpass-postgres` (with the default project prefix, Docker lists it as `backend_daryeelpass-postgres`). The volume persists the database when the container is stopped and restarted.
 
 ### 4. Install packages and deploy the schema
 
@@ -306,7 +306,7 @@ From the repository root:
 docker compose -f backend\docker-compose.yml down
 ```
 
-This stops and removes the container but preserves `daryeelpass-postgres`, so local records remain available next time the compose service starts.
+This stops and removes the container but preserves the `daryeelpass-postgres` Compose volume, so local records remain available next time the compose service starts.
 
 ### Delete the local database volume
 

@@ -60,6 +60,14 @@ button.is-success { border-color: var(--color-success); color: var(--color-succe
 .invite-form h3, .invite-form .field-hint { grid-column: 1 / -1; margin: 0; }
 .invite-form button { align-self: end; min-height: 44px; }
 .invite-form .field-hint a { overflow-wrap: anywhere; }
+.system-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: var(--space-md) 0 var(--space-lg); }
+.system-stats article { display: grid; gap: 5px; padding: 18px; border: 1px solid var(--color-green-rim); border-radius: var(--radius-input); background: white; }
+.system-stats strong { font-family: var(--font-display); font-size: var(--text-2xl); }
+.system-stats span, .system-clinic-list span { color: var(--color-muted); font-size: var(--text-sm); }
+.system-clinic-list { display: grid; gap: 8px; margin: 12px 0 var(--space-md); padding: 0; list-style: none; }
+.system-clinic-list li { display: flex; justify-content: space-between; gap: var(--space-sm); padding: 12px 14px; border: 1px solid var(--color-green-rim); border-radius: var(--radius-input); background: white; }
+.system-clinic-list li > div { display: grid; gap: 3px; }
+.system-setup-backdrop { z-index: calc(var(--z-modal) + 1); }
 @media (max-width: 680px) {
   .requests-panel { width: calc(100% - 32px); }
   .requests-panel li { align-items: flex-start; flex-direction: column; }

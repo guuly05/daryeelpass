@@ -58,6 +58,8 @@ function App() {
   const [showLogin, setShowLogin] = useState(() => Boolean(new URL(window.location.href).searchParams.get('staff_invite')));
   const [bookingClinic, setBookingClinic] = useState(null);
   const [authUser, setAuthUser] = useState(null);
+  const [systemSetupAvailable, setSystemSetupAvailable] = useState(false);
+  const [systemOverview, setSystemOverview] = useState(null);
   const [bookingRequests, setBookingRequests] = useState([]);
   const [staffRequests, setStaffRequests] = useState([]);
   const [staffInviteToken, setStaffInviteToken] = useState(() => new URL(window.location.href).searchParams.get('staff_invite') || '');
@@ -90,6 +92,21 @@ function App() {
       .then((session) => setAuthUser(session?.authenticated ? session.user : null))
       .catch(() => setAuthUser(null));
   }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/system/setup-status`)
+      .then((response) => response.ok ? response.json() : { setupAvailable: false })
+      .then((result) => setSystemSetupAvailable(Boolean(result.setupAvailable)))
+      .catch(() => setSystemSetupAvailable(false));
+  }, []);
+
+  useEffect(() => {
+    if (authUser?.role !== 'SYSTEM_ADMIN') { setSystemOverview(null); return; }
+    fetch(`${API_BASE}/system/overview`, { credentials: 'include' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => setSystemOverview(result?.data ?? null))
+      .catch(() => setSystemOverview(null));
+  }, [authUser]);
 
   useEffect(() => {
     if (!authUser) { setBookingRequests([]); setStaffRequests([]); return; }
@@ -172,7 +189,8 @@ function App() {
           if (!response.ok) { setToast(t.updateFailed); return; }
           setBookingRequests((items) => items.map((item) => item.id === id ? { ...item, status: 'CANCELLED' } : item));
         }} />}
-        {['STAFF', 'ADMIN'].includes(authUser?.role) && <StaffDashboard t={t} requests={staffRequests} clinics={clinics} authUser={authUser} onRefresh={() => fetch(`${API_BASE}/staff/booking-requests`, { credentials: 'include' }).then((r) => r.json()).then((r) => setStaffRequests(r.data ?? []))} onError={(message) => setToast(message)} />}
+        {authUser?.role === 'SYSTEM_ADMIN' && <SystemAdminDashboard t={t} clinics={clinics} overview={systemOverview} onRefresh={() => fetch(`${API_BASE}/system/overview`, { credentials: 'include' }).then((response) => response.json()).then((result) => setSystemOverview(result.data ?? null))} onError={(message) => setToast(message)} />}
+        {['STAFF', 'CLINIC_ADMIN', 'SYSTEM_ADMIN'].includes(authUser?.role) && <StaffDashboard t={t} requests={staffRequests} clinics={clinics} authUser={authUser} onRefresh={() => fetch(`${API_BASE}/staff/booking-requests`, { credentials: 'include' }).then((r) => r.json()).then((r) => setStaffRequests(r.data ?? []))} onError={(message) => setToast(message)} />}
       </main>
 
       <footer className="app-footer">
@@ -180,7 +198,8 @@ function App() {
         <span className="footer-mark"><ShieldCheck size={15} strokeWidth={1.8} /> {t.sourceLabel}</span>
       </footer>
 
-      {showLogin && <LoginDialog t={t} onClose={() => setShowLogin(false)} inviteToken={staffInviteToken} onAuthenticated={(user) => {
+      {systemSetupAvailable && <SystemSetupDialog t={t} onCreated={(user) => { setSystemSetupAvailable(false); setAuthUser(user); }} />}
+      {showLogin && !systemSetupAvailable && <LoginDialog t={t} onClose={() => setShowLogin(false)} inviteToken={staffInviteToken} onAuthenticated={(user) => {
         const url = new URL(window.location.href);
         url.searchParams.delete('staff_invite');
         window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
@@ -268,6 +287,39 @@ function ClinicDirectory({ t, language, clinics, loading, error, search, onSearc
       )}
     </section>
   );
+}
+
+function SystemSetupDialog({ t, onCreated }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(event) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(`${API_BASE}/system/setup`, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error?.message || t.setupFailed);
+      onCreated(result.user);
+    } catch (setupError) { setError(setupError.message); }
+    finally { setBusy(false); }
+  }
+  return <div className="dialog-backdrop system-setup-backdrop" role="presentation">
+    <section className="dialog login-dialog" role="dialog" aria-modal="true" aria-labelledby="system-setup-title">
+      <span className="dialog-icon"><ShieldCheck size={22} strokeWidth={1.8} /></span>
+      <p className="preview-label">{t.firstRun}</p>
+      <h2 id="system-setup-title">{t.setupSystemTitle}</h2>
+      <p>{t.setupSystemText}</p>
+      <form className="auth-form" onSubmit={submit}>
+        <label>{t.setupKey}<input name="setupKey" type="password" autoComplete="off" required minLength={32} /></label>
+        <label>{t.name}<input name="displayName" autoComplete="name" required minLength={2} maxLength={120} /></label>
+        <label>{t.email}<input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
+        <label>{t.password}<input name="password" type="password" autoComplete="new-password" required minLength={10} maxLength={128} /></label>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <button className="primary-button full-button" type="submit" disabled={busy}>{busy ? t.pleaseWait : t.createSystemAdmin}<ArrowRight size={17} /></button>
+      </form>
+    </section>
+  </div>;
 }
 
 function LoginDialog({ t, onClose, inviteToken, onAuthenticated }) {
@@ -370,7 +422,7 @@ function StaffDashboard({ t, requests, clinics, authUser, onRefresh, onError }) 
   async function invite(event) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-    const response = await fetch(`${API_BASE}/admin/staff-invites`, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) });
+    const response = await fetch(`${API_BASE}/clinic-admin/staff-invites`, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) });
     const result = await response.json();
     if (!response.ok) { onError(result.error?.message || t.updateFailed); return; }
     setInviteResult(result.data.inviteUrl);
@@ -386,10 +438,39 @@ function StaffDashboard({ t, requests, clinics, authUser, onRefresh, onError }) 
     setAvailabilityMessage(t.availabilityAdded);
     form.reset();
   }
-  const availableClinics = authUser.role === 'ADMIN' ? clinics : clinics.filter((clinic) => clinic.id === authUser.clinicId);
-  return <section className="requests-panel staff-panel"><h2>{t.staffRequests}</h2>{authUser.role === 'ADMIN' && <form className="invite-form" onSubmit={invite}><h3>{t.inviteClinicStaff}</h3><label>{t.email}<input name="email" type="email" required /></label><label>{t.clinic}<select name="clinicId" required>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select></label><button className="primary-button" type="submit">{t.createInvite}</button>{inviteResult && <p className="field-hint">{t.inviteLink} <a href={inviteResult}>{inviteResult}</a></p>}</form>}
+  const availableClinics = authUser.role === 'SYSTEM_ADMIN' ? clinics : clinics.filter((clinic) => clinic.id === authUser.clinicId);
+  return <section className="requests-panel staff-panel"><h2>{t.staffRequests}</h2>{authUser.role === 'CLINIC_ADMIN' && <form className="invite-form" onSubmit={invite}><h3>{t.inviteClinicStaff}</h3><label>{t.email}<input name="email" type="email" required /></label><button className="primary-button" type="submit">{t.createInvite}</button>{inviteResult && <p className="field-hint">{t.inviteLink} <a href={inviteResult}>{inviteResult}</a></p>}</form>}
     <form className="invite-form" onSubmit={addAvailability}><h3>{t.addAvailability}</h3><label>{t.service}<select name="serviceId" required>{availableClinics.flatMap((clinic) => clinic.services.map((service) => <option key={service.id} value={service.id}>{clinic.name} · {t[service.nameKey] ?? service.nameKey}</option>))}</select></label><label>{t.startTime} ({t.hargeisaTime})<input name="startsAt" type="datetime-local" required /></label><label>{t.capacity}<input name="capacity" type="number" min="1" max="100" defaultValue="1" required /></label><button className="primary-button" type="submit">{t.addTime}</button>{availabilityMessage && <p className="field-hint">{availabilityMessage}</p>}</form>
     {!requests.length && <p>{t.noRequests}</p>}<ul>{requests.map((request) => <li key={request.id}><div><strong>{request.clinic.publicName ?? request.clinic.nameKey} · {request.user.displayName}</strong><span>{t[request.service.nameKey] ?? request.service.nameKey} · {new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Mogadishu' }).format(new Date(request.startsAt))}</span><small>{request.user.email} · {request.phone} · {t.statusLabels[request.status]}</small></div>{request.status === 'PENDING' && <div className="request-actions"><button type="button" className="text-button" onClick={() => update(request.id, 'CONFIRMED')}>{t.confirm}</button><button type="button" className="text-button" onClick={() => update(request.id, 'DECLINED')}>{t.decline}</button></div>}</li>)}</ul>
+  </section>;
+}
+
+function SystemAdminDashboard({ t, clinics, overview, onRefresh, onError }) {
+  const [inviteResult, setInviteResult] = useState('');
+  async function inviteClinicAdmin(event) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const response = await fetch(`${API_BASE}/system/clinic-admin-invites`, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) });
+    const result = await response.json();
+    if (!response.ok) { onError(result.error?.message || t.updateFailed); return; }
+    setInviteResult(result.data.inviteUrl);
+  }
+  async function setClinicAdminActive(id, active) {
+    const response = await fetch(`${API_BASE}/system/clinic-admins/${id}/status`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ active }) });
+    const result = await response.json();
+    if (!response.ok) { onError(result.error?.message || t.updateFailed); return; }
+    onRefresh();
+  }
+  const total = (items) => (items ?? []).reduce((sum, item) => sum + item._count._all, 0);
+  const countRole = (role) => overview?.users.find((item) => item.role === role)?._count._all ?? 0;
+  return <section className="requests-panel system-panel">
+    <h2>{t.systemOverview}</h2>
+    {!overview && <p>{t.loadingOverview}</p>}
+    {overview && <><div className="system-stats"><article><strong>{overview.clinics.length}</strong><span>{t.clinics}</span></article><article><strong>{countRole('PATIENT')}</strong><span>{t.patients}</span></article><article><strong>{countRole('CLINIC_ADMIN')}</strong><span>{t.clinicAdmins}</span></article><article><strong>{total(overview.requests)}</strong><span>{t.totalRequests}</span></article></div>
+      <h3>{t.systemClinics}</h3><ul className="system-clinic-list">{overview.clinics.map((clinic) => <li key={clinic.id}><strong>{clinic.publicName ?? clinic.nameKey}</strong><span>{clinic._count.users} {t.accounts} · {clinic._count.bookingRequests} {t.requestsLabel}</span></li>)}</ul>
+      <h3>{t.manageClinicAdmins}</h3><ul className="system-clinic-list">{overview.clinicAdmins.map((admin) => <li key={admin.id}><div><strong>{admin.displayName}</strong><span>{admin.email} · {admin.clinic?.publicName ?? admin.clinic?.nameKey ?? ''} · {admin.active ? t.active : t.disabled}</span></div><button type="button" className="text-button" onClick={() => setClinicAdminActive(admin.id, !admin.active)}>{admin.active ? t.disableAccount : t.enableAccount}</button></li>)}</ul>
+      <p className="field-hint">{t.requestStatuses}: {overview.requests.map((item) => `${t.statusLabels[item.status]} ${item._count._all}`).join(' · ')}</p></>}
+    <form className="invite-form" onSubmit={inviteClinicAdmin}><h3>{t.createClinicAdmin}</h3><label>{t.email}<input name="email" type="email" required /></label><label>{t.clinic}<select name="clinicId" required>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select></label><button className="primary-button" type="submit">{t.createInvite}</button>{inviteResult && <p className="field-hint">{t.inviteLink} <a href={inviteResult}>{inviteResult}</a></p>}</form>
   </section>;
 }
 

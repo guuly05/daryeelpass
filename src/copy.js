@@ -64,7 +64,9 @@ export const copy = {
     statusLabels: { PENDING: 'Sugaya', CONFIRMED: 'Xaruntu app-ka ayay ku xaqiijisay', DECLINED: 'La diiday', CANCELLED: 'La joojiyey' },
     inviteClinicStaff: 'Ku martiqaad shaqaale xarun', clinic: 'Xarunta', createInvite: 'Samee martiqaad', inviteLink: 'Nuqul ka samee oo la wadaag xidhiidhkan:',
     staffInviteTitle: 'Deji akoonka shaqaalaha', staffInviteText: 'Samee furaha sirta ah si aad u aqbasho martiqaadka xarunta.', inviteEmailNote: 'Iimaylka waxa go’aamisay martiqaadka.',
-    addAvailability: 'Ku dar wakhtiga xarunta', startTime: 'Wakhtiga bilowga', hargeisaTime: 'Wakhtiga Hargeysa', capacity: 'Tirada codsiyada', addTime: 'Ku dar wakhti', availabilityAdded: 'Wakhtiga waa lagu daray. Codsiyada la soo diray wali boos ma xafidayaan.'
+    addAvailability: 'Ku dar wakhtiga xarunta', startTime: 'Wakhtiga bilowga', hargeisaTime: 'Wakhtiga Hargeysa', capacity: 'Tirada codsiyada', addTime: 'Ku dar wakhti', availabilityAdded: 'Wakhtiga waa lagu daray. Codsiyada la soo diray wali boos ma xafidayaan.',
+    firstRun: 'Dejinta bilowga ah', setupSystemTitle: 'Samee maamulaha nidaamka', setupSystemText: 'Hal mar oo keliya ayaa la samayn karaa. Furaha dejinta waxa laga helaa faylka deegaanka server-ka.', setupKey: 'Furaha dejinta nidaamka', createSystemAdmin: 'Samee maamulaha nidaamka', setupFailed: 'Dejinta nidaamka way fashilantay.',
+    systemOverview: 'Guudmarka nidaamka', loadingOverview: 'Xogta guud ayaa la soo rarayaa…', patients: 'Isticmaaleyaasha caadiga ah', clinicAdmins: 'Maamulayaasha xarumaha', totalRequests: 'Dhammaan codsiyada', systemClinics: 'Xarumaha', accounts: 'akoon', requestsLabel: 'codsi', requestStatuses: 'Xaaladda codsiyada', createClinicAdmin: 'Ku martiqaad maamulaha xarunta', manageClinicAdmins: 'Maamulayaasha xarumaha', active: 'Firfircoon', disabled: 'La joojiyey', disableAccount: 'Jooji akoonka', enableAccount: 'Dib u hawlgeli'
   },
   en: {
     brand: 'DaryeelPass',
@@ -131,6 +133,8 @@ export const copy = {
     statusLabels: { PENDING: 'Pending', CONFIRMED: 'Marked confirmed in app', DECLINED: 'Declined', CANCELLED: 'Cancelled' },
     inviteClinicStaff: 'Invite clinic staff', clinic: 'Clinic', createInvite: 'Create invite', inviteLink: 'Copy and share this link:',
     staffInviteTitle: 'Set up staff account', staffInviteText: 'Choose a password to accept the clinic invite.', inviteEmailNote: 'The invite specifies your email.',
-    addAvailability: 'Add clinic availability', startTime: 'Start time', hargeisaTime: 'Hargeisa time', capacity: 'Request capacity', addTime: 'Add time', availabilityAdded: 'Time added. Requests still do not reserve a clinic appointment.'
+    addAvailability: 'Add clinic availability', startTime: 'Start time', hargeisaTime: 'Hargeisa time', capacity: 'Request capacity', addTime: 'Add time', availabilityAdded: 'Time added. Requests still do not reserve a clinic appointment.',
+    firstRun: 'First-run setup', setupSystemTitle: 'Create the system admin', setupSystemText: 'This setup can be completed once. Find the setup key in the server environment file.', setupKey: 'System setup key', createSystemAdmin: 'Create system admin', setupFailed: 'System setup failed.',
+    systemOverview: 'System overview', loadingOverview: 'Loading system overview…', patients: 'Patient accounts', clinicAdmins: 'Clinic admins', totalRequests: 'Total requests', systemClinics: 'Clinics', accounts: 'accounts', requestsLabel: 'requests', requestStatuses: 'Request statuses', createClinicAdmin: 'Invite a clinic admin', manageClinicAdmins: 'Manage clinic admins', active: 'Active', disabled: 'Disabled', disableAccount: 'Disable account', enableAccount: 'Enable account'
   }
 };

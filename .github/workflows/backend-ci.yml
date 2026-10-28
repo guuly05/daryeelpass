@@ -32,8 +32,8 @@ jobs:
         working-directory: backend
     env:
       NODE_ENV: test
-      DEMO_MODE: 'true'
       SESSION_SECRET: test-only-session-secret-long-enough-for-ci
+      SYSTEM_SETUP_KEY: ci-test-system-setup-key-at-least-32-chars
       FRONTEND_ORIGIN: http://localhost:5173
       DATABASE_URL: postgresql://daryeelpass:daryeelpass@localhost:5432/daryeelpass_test?schema=public
       DIRECT_URL: postgresql://daryeelpass:daryeelpass@localhost:5432/daryeelpass_test?schema=public

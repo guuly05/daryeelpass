@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
+import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { prisma, withAuthContext, withUserContext } from '../db.js';
 import { requireRole } from '../middleware/auth.js';
@@ -29,6 +30,14 @@ const sessionInclude = { user: { select: { id: true, email: true, displayName: t
 
 function normalizedEmail(value) { return value.trim().toLowerCase(); }
 
+function validSystemSetupKey(candidate) {
+  const configured = config.SYSTEM_SETUP_KEY;
+  if (!configured || typeof candidate !== 'string') return false;
+  const received = Buffer.from(candidate);
+  const expected = Buffer.from(configured);
+  return received.length === expected.length && timingSafeEqual(received, expected);
+}
+
 async function openSession(req, userId) {
   const token = createOpaqueToken();
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
@@ -44,6 +53,36 @@ apiRouter.post('/auth/register', async (req, res) => {
     data: { email, displayName: input.displayName, passwordHash, role: 'PATIENT' },
     select: { id: true, email: true, displayName: true, role: true, clinicId: true }
   }));
+  await openSession(req, user.id);
+  return res.status(201).json({ authenticated: true, user });
+});
+
+apiRouter.get('/system/setup-status', async (_req, res) => {
+  if (!config.SYSTEM_SETUP_KEY) return res.json({ setupAvailable: false });
+  const setupState = await withAuthContext((tx) => tx.systemSetupState.findUnique({ where: { id: 'singleton' }, select: { id: true } }));
+  return res.json({ setupAvailable: !setupState });
+});
+
+apiRouter.post('/system/setup', rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false }), async (req, res) => {
+  const input = z.object({
+    setupKey: z.string().min(1).max(256),
+    email: z.string().trim().email().max(254),
+    displayName: z.string().trim().min(2).max(120),
+    password: z.string().min(10).max(128)
+  }).strict().parse(req.body);
+  if (!validSystemSetupKey(input.setupKey)) throw new HttpError(403, 'SETUP_KEY_INVALID', 'The system setup key is incorrect.');
+  const passwordHash = await hashPassword(input.password);
+  const user = await withAuthContext(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(4815162342)`;
+    const existing = await tx.systemSetupState.findUnique({ where: { id: 'singleton' }, select: { id: true } });
+    if (existing) throw new HttpError(409, 'SYSTEM_ALREADY_SETUP', 'System admin setup has already been completed.');
+    const created = await tx.user.create({
+      data: { email: normalizedEmail(input.email), displayName: input.displayName, passwordHash, role: 'SYSTEM_ADMIN' },
+      select: { id: true, email: true, displayName: true, role: true, clinicId: true }
+    });
+    await tx.systemSetupState.create({ data: { id: 'singleton', systemAdminId: created.id } });
+    return created;
+  });
   await openSession(req, user.id);
   return res.status(201).json({ authenticated: true, user });
 });
@@ -156,45 +195,81 @@ apiRouter.patch('/booking-requests/:id/cancel', requireRole('patient'), async (r
   return res.json({ data: result });
 });
 
-apiRouter.get('/staff/booking-requests', requireRole('staff', 'admin'), async (req, res) => {
+apiRouter.get('/staff/booking-requests', requireRole('staff', 'clinic_admin', 'system_admin'), async (req, res) => {
   const data = await withUserContext(req.user, (tx) => tx.bookingRequest.findMany({
-    where: req.user.role === 'admin' ? {} : { clinicId: req.user.clinicId },
+    where: req.user.role === 'system_admin' ? {} : { clinicId: req.user.clinicId },
     include: { user: { select: { displayName: true, email: true } }, clinic: { select: { publicName: true, nameKey: true } }, service: { select: { nameKey: true } } },
     orderBy: [{ status: 'asc' }, { startsAt: 'asc' }]
   }));
   return res.json({ data });
 });
 
-apiRouter.patch('/staff/booking-requests/:id', requireRole('staff', 'admin'), async (req, res) => {
+apiRouter.patch('/staff/booking-requests/:id', requireRole('staff', 'clinic_admin', 'system_admin'), async (req, res) => {
   const id = z.string().min(1).max(64).parse(req.params.id);
   const { status } = statusSchema.parse(req.body);
   const result = await withUserContext(req.user, async (tx) => {
-    const changed = await tx.bookingRequest.updateMany({ where: { id, status: 'PENDING', ...(req.user.role === 'admin' ? {} : { clinicId: req.user.clinicId }) }, data: { status } });
+    const changed = await tx.bookingRequest.updateMany({ where: { id, status: 'PENDING', ...(req.user.role === 'system_admin' ? {} : { clinicId: req.user.clinicId }) }, data: { status } });
     if (!changed.count) throw new HttpError(404, 'REQUEST_NOT_FOUND', 'Pending request not found for this clinic.');
     return tx.bookingRequest.findUnique({ where: { id } });
   });
   return res.json({ data: result });
 });
 
-apiRouter.post('/staff/availability', requireRole('staff', 'admin'), async (req, res) => {
+apiRouter.post('/staff/availability', requireRole('staff', 'clinic_admin', 'system_admin'), async (req, res) => {
   const input = availabilitySchema.parse(req.body);
   const startsAt = new Date(input.startsAt);
   if (startsAt <= new Date()) throw new HttpError(400, 'INVALID_AVAILABILITY_TIME', 'Availability must be in the future.');
   const service = await prisma.service.findFirst({ where: { id: input.serviceId, active: true, clinic: { active: true } } });
-  if (!service || (req.user.role !== 'admin' && service.clinicId !== req.user.clinicId)) throw new HttpError(404, 'SERVICE_NOT_FOUND', 'Service not found for this clinic.');
+  if (!service || (req.user.role !== 'system_admin' && service.clinicId !== req.user.clinicId)) throw new HttpError(404, 'SERVICE_NOT_FOUND', 'Service not found for this clinic.');
   const slot = await withUserContext(req.user, (tx) => tx.appointmentSlot.create({ data: { serviceId: service.id, startsAt, capacity: input.capacity, source: 'staff' } }));
   return res.status(201).json({ data: slot });
 });
 
-apiRouter.post('/admin/staff-invites', requireRole('admin'), async (req, res) => {
+apiRouter.post('/system/clinic-admin-invites', requireRole('system_admin'), async (req, res) => {
   const input = inviteSchema.parse(req.body);
   const email = normalizedEmail(input.email);
   const clinic = await prisma.clinic.findFirst({ where: { id: input.clinicId, active: true } });
   if (!clinic) throw new HttpError(404, 'CLINIC_NOT_FOUND', 'Clinic not found.');
   const token = createOpaqueToken();
-  const invite = await withUserContext(req.user, (tx) => tx.staffInvite.create({ data: { email, clinicId: clinic.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } }));
+  const invite = await withUserContext(req.user, (tx) => tx.staffInvite.create({ data: { email, clinicId: clinic.id, role: 'CLINIC_ADMIN', tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } }));
   const inviteUrl = `${config.FRONTEND_ORIGIN}/?staff_invite=${encodeURIComponent(token)}`;
   return res.status(201).json({ data: { id: invite.id, email, clinic: clinic.publicName ?? clinic.nameKey, expiresAt: invite.expiresAt.toISOString(), inviteUrl } });
+});
+
+apiRouter.post('/clinic-admin/staff-invites', requireRole('clinic_admin'), async (req, res) => {
+  const input = z.object({ email: z.string().trim().email().max(254) }).strict().parse(req.body);
+  if (!req.user.clinicId) throw new HttpError(403, 'CLINIC_NOT_ASSIGNED', 'This clinic admin has no assigned clinic.');
+  const token = createOpaqueToken();
+  const invite = await withUserContext(req.user, (tx) => tx.staffInvite.create({ data: {
+    email: normalizedEmail(input.email), clinicId: req.user.clinicId, role: 'STAFF', tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  } }));
+  const inviteUrl = `${config.FRONTEND_ORIGIN}/?staff_invite=${encodeURIComponent(token)}`;
+  return res.status(201).json({ data: { id: invite.id, email: invite.email, expiresAt: invite.expiresAt.toISOString(), inviteUrl } });
+});
+
+apiRouter.get('/system/overview', requireRole('system_admin'), async (req, res) => {
+  const data = await withUserContext(req.user, async (tx) => {
+    const [clinics, users, requests, clinicAdmins] = await Promise.all([
+      tx.clinic.findMany({ select: { id: true, publicName: true, nameKey: true, active: true, _count: { select: { users: true, bookingRequests: true } } }, orderBy: { publicName: 'asc' } }),
+      tx.user.groupBy({ by: ['role'], _count: { _all: true } }),
+      tx.bookingRequest.groupBy({ by: ['status'], _count: { _all: true } }),
+      tx.user.findMany({ where: { role: 'CLINIC_ADMIN' }, select: { id: true, email: true, displayName: true, active: true, clinic: { select: { publicName: true, nameKey: true } } }, orderBy: { email: 'asc' } })
+    ]);
+    return { clinics, users, requests, clinicAdmins };
+  });
+  return res.json({ data });
+});
+
+apiRouter.patch('/system/clinic-admins/:id/status', requireRole('system_admin'), async (req, res) => {
+  const id = z.string().min(1).max(64).parse(req.params.id);
+  const { active } = z.object({ active: z.boolean() }).strict().parse(req.body);
+  const updated = await withUserContext(req.user, async (tx) => {
+    const changed = await tx.user.updateMany({ where: { id, role: 'CLINIC_ADMIN' }, data: { active } });
+    if (!changed.count) throw new HttpError(404, 'CLINIC_ADMIN_NOT_FOUND', 'Clinic admin not found.');
+    if (!active) await tx.loginSession.deleteMany({ where: { userId: id } });
+    return tx.user.findUnique({ where: { id }, select: { id: true, email: true, displayName: true, active: true } });
+  });
+  return res.json({ data: updated });
 });
 
 apiRouter.post('/auth/accept-staff-invite', async (req, res) => {
@@ -203,7 +278,7 @@ apiRouter.post('/auth/accept-staff-invite', async (req, res) => {
   const user = await withAuthContext(async (tx) => {
     const invite = await tx.staffInvite.findFirst({ where: { tokenHash: hashToken(input.token), usedAt: null, expiresAt: { gt: new Date() } } });
     if (!invite) throw new HttpError(400, 'INVITE_INVALID', 'This staff invite is invalid or expired.');
-    const created = await tx.user.create({ data: { email: normalizedEmail(invite.email), displayName: input.displayName, passwordHash, role: 'STAFF', clinicId: invite.clinicId }, select: { id: true, email: true, displayName: true, role: true, clinicId: true } });
+    const created = await tx.user.create({ data: { email: normalizedEmail(invite.email), displayName: input.displayName, passwordHash, role: invite.role, clinicId: invite.clinicId }, select: { id: true, email: true, displayName: true, role: true, clinicId: true } });
     await tx.staffInvite.update({ where: { id: invite.id }, data: { usedAt: new Date() } });
     return created;
   });

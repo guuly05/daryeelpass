@@ -11,7 +11,8 @@ datasource db {
 enum UserRole {
   PATIENT
   STAFF
-  ADMIN
+  CLINIC_ADMIN
+  SYSTEM_ADMIN
 }
 
 enum BookingRequestStatus {
@@ -109,11 +110,21 @@ model User {
   clinic       Clinic?  @relation(fields: [clinicId], references: [id], onDelete: Restrict)
   sessions     LoginSession[]
   requests     BookingRequest[]
+  systemSetup  SystemSetupState?
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@index([clinicId, role, active])
   @@map("users")
+}
+
+model SystemSetupState {
+  id            String   @id @default("singleton")
+  systemAdminId String   @unique @map("system_admin_id")
+  completedAt   DateTime @default(now()) @map("completed_at")
+  systemAdmin   User     @relation(fields: [systemAdminId], references: [id], onDelete: Restrict)
+
+  @@map("system_setup_state")
 }
 
 model LoginSession {
@@ -133,6 +144,7 @@ model StaffInvite {
   tokenHash String   @unique @map("token_hash")
   email     String
   clinicId  String   @map("clinic_id")
+  role      UserRole @default(STAFF)
   expiresAt DateTime @map("expires_at")
   usedAt    DateTime? @map("used_at")
   clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)

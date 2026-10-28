@@ -499,7 +499,7 @@ C:\Users\THINKPAD\Downloads\DaryeelPass-Screenshots\
 - `daryeelpass-clinic-directory.png` — English public directory, full page.
 - `daryeelpass-system-admin.png` — English system-admin workspace and full page; local demo patient and clinic-admin contact fields are replaced with safe example values in the image only.
 - `daryeelpass-system-admin-desktop.png` — desktop system-admin viewport capture.
-- `daryeelpass-system-admin-mobile.png` — full-page mobile system-admin capture.
+- `daryeelpass-system-admin-mobile.png` — mobile system-admin first-screen capture at 3x device scale.
 
 These captures are local artifacts and are not committed to the repository. The edited labels in the system-admin captures are image-only redactions; they do not change database records.
 

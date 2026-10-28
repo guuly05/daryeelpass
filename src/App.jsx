@@ -183,14 +183,14 @@ function App() {
       </header>
 
       <main id="main" className="main-content">
+        {authUser?.role === 'SYSTEM_ADMIN' && <SystemAdminDashboard t={t} clinics={clinics} overview={systemOverview} onRefresh={() => fetch(`${API_BASE}/system/overview`, { credentials: 'include' }).then((response) => response.json()).then((result) => setSystemOverview(result.data ?? null))} onError={(message) => setToast(message)} />}
+        {['STAFF', 'CLINIC_ADMIN', 'SYSTEM_ADMIN'].includes(authUser?.role) && <StaffDashboard t={t} requests={staffRequests} clinics={clinics} authUser={authUser} onRefresh={() => fetch(`${API_BASE}/staff/booking-requests`, { credentials: 'include' }).then((r) => r.json()).then((r) => setStaffRequests(r.data ?? []))} onError={(message) => setToast(message)} />}
         <ClinicDirectory t={t} language={language} clinics={clinics} loading={directoryLoading} error={directoryError} search={clinicSearch} onSearch={setClinicSearch} onBook={(clinic) => authUser ? setBookingClinic(clinic) : setShowLogin(true)} />
         {authUser?.role === 'PATIENT' && <PatientRequests t={t} requests={bookingRequests} onCancel={async (id) => {
           const response = await fetch(`${API_BASE}/booking-requests/${id}/cancel`, { method: 'PATCH', credentials: 'include' });
           if (!response.ok) { setToast(t.updateFailed); return; }
           setBookingRequests((items) => items.map((item) => item.id === id ? { ...item, status: 'CANCELLED' } : item));
         }} />}
-        {authUser?.role === 'SYSTEM_ADMIN' && <SystemAdminDashboard t={t} clinics={clinics} overview={systemOverview} onRefresh={() => fetch(`${API_BASE}/system/overview`, { credentials: 'include' }).then((response) => response.json()).then((result) => setSystemOverview(result.data ?? null))} onError={(message) => setToast(message)} />}
-        {['STAFF', 'CLINIC_ADMIN', 'SYSTEM_ADMIN'].includes(authUser?.role) && <StaffDashboard t={t} requests={staffRequests} clinics={clinics} authUser={authUser} onRefresh={() => fetch(`${API_BASE}/staff/booking-requests`, { credentials: 'include' }).then((r) => r.json()).then((r) => setStaffRequests(r.data ?? []))} onError={(message) => setToast(message)} />}
       </main>
 
       <footer className="app-footer">
@@ -314,7 +314,7 @@ function SystemSetupDialog({ t, onCreated }) {
         <label>{t.setupKey}<input name="setupKey" type="password" autoComplete="off" required minLength={32} /></label>
         <label>{t.name}<input name="displayName" autoComplete="name" required minLength={2} maxLength={120} /></label>
         <label>{t.email}<input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
-        <label>{t.password}<input name="password" type="password" autoComplete="new-password" required minLength={10} maxLength={128} /></label>
+        <label>{t.password}<input name="password" type="password" autoComplete="new-password" required minLength={9} maxLength={128} /></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="primary-button full-button" type="submit" disabled={busy}>{busy ? t.pleaseWait : t.createSystemAdmin}<ArrowRight size={17} /></button>
       </form>
@@ -439,9 +439,47 @@ function StaffDashboard({ t, requests, clinics, authUser, onRefresh, onError }) 
     form.reset();
   }
   const availableClinics = authUser.role === 'SYSTEM_ADMIN' ? clinics : clinics.filter((clinic) => clinic.id === authUser.clinicId);
-  return <section className="requests-panel staff-panel"><h2>{t.staffRequests}</h2>{authUser.role === 'CLINIC_ADMIN' && <form className="invite-form" onSubmit={invite}><h3>{t.inviteClinicStaff}</h3><label>{t.email}<input name="email" type="email" required /></label><button className="primary-button" type="submit">{t.createInvite}</button>{inviteResult && <p className="field-hint">{t.inviteLink} <a href={inviteResult}>{inviteResult}</a></p>}</form>}
-    <form className="invite-form" onSubmit={addAvailability}><h3>{t.addAvailability}</h3><label>{t.service}<select name="serviceId" required>{availableClinics.flatMap((clinic) => clinic.services.map((service) => <option key={service.id} value={service.id}>{clinic.name} · {t[service.nameKey] ?? service.nameKey}</option>))}</select></label><label>{t.startTime} ({t.hargeisaTime})<input name="startsAt" type="datetime-local" required /></label><label>{t.capacity}<input name="capacity" type="number" min="1" max="100" defaultValue="1" required /></label><button className="primary-button" type="submit">{t.addTime}</button>{availabilityMessage && <p className="field-hint">{availabilityMessage}</p>}</form>
-    {!requests.length && <p>{t.noRequests}</p>}<ul>{requests.map((request) => <li key={request.id}><div><strong>{request.clinic.publicName ?? request.clinic.nameKey} · {request.user.displayName}</strong><span>{t[request.service.nameKey] ?? request.service.nameKey} · {new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Mogadishu' }).format(new Date(request.startsAt))}</span><small>{request.user.email} · {request.phone} · {t.statusLabels[request.status]}</small></div>{request.status === 'PENDING' && <div className="request-actions"><button type="button" className="text-button" onClick={() => update(request.id, 'CONFIRMED')}>{t.confirm}</button><button type="button" className="text-button" onClick={() => update(request.id, 'DECLINED')}>{t.decline}</button></div>}</li>)}</ul>
+  return <section className="dashboard-panel staff-panel" aria-labelledby="staff-requests-title">
+    <header className="dashboard-heading">
+      <h2 id="staff-requests-title">{t.staffRequests}</h2>
+      <span className="queue-count"><strong>{requests.length}</strong><span>{t.requestsLabel}</span></span>
+    </header>
+    <div className="staff-workspace-grid">
+      <section className="booking-queue" aria-label={t.staffRequests}>
+        {!requests.length ? <div className="queue-empty"><p>{t.noRequests}</p></div> : <ul className="booking-queue-list">
+          {requests.map((request) => <li key={request.id}>
+            <div className="booking-primary">
+              <strong>{request.user.displayName}</strong>
+              <span>{request.clinic.publicName ?? request.clinic.nameKey}</span>
+            </div>
+            <div className="booking-details">
+              <span>{t[request.service.nameKey] ?? request.service.nameKey}</span>
+              <time dateTime={request.startsAt}>{new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Mogadishu' }).format(new Date(request.startsAt))}</time>
+              <span>{request.user.email}</span>
+              <span>{request.phone}</span>
+              <span className={`request-status status-${request.status.toLowerCase()}`}>{t.statusLabels[request.status]}</span>
+            </div>
+            {request.status === 'PENDING' && <div className="request-actions"><button type="button" className="text-button" onClick={() => update(request.id, 'CONFIRMED')}>{t.confirm}</button><button type="button" className="text-button" onClick={() => update(request.id, 'DECLINED')}>{t.decline}</button></div>}
+          </li>)}
+        </ul>}
+      </section>
+      <aside className="staff-tools">
+        {authUser.role === 'CLINIC_ADMIN' && <form className="invite-form dashboard-form" onSubmit={invite}>
+          <h3>{t.inviteClinicStaff}</h3>
+          <label>{t.email}<input name="email" type="email" required /></label>
+          <button className="primary-button" type="submit">{t.createInvite}</button>
+          {inviteResult && <p className="field-hint invite-result">{t.inviteLink} <a href={inviteResult}>{inviteResult}</a></p>}
+        </form>}
+        <form className="invite-form dashboard-form availability-form" onSubmit={addAvailability}>
+          <h3>{t.addAvailability}</h3>
+          <label>{t.service}<select name="serviceId" required>{availableClinics.flatMap((clinic) => clinic.services.map((service) => <option key={service.id} value={service.id}>{clinic.name}: {t[service.nameKey] ?? service.nameKey}</option>))}</select></label>
+          <label>{t.startTime} ({t.hargeisaTime})<input name="startsAt" type="datetime-local" required /></label>
+          <label>{t.capacity}<input name="capacity" type="number" min="1" max="100" defaultValue="1" required /></label>
+          <button className="primary-button" type="submit">{t.addTime}</button>
+          {availabilityMessage && <p className="field-hint invite-result" role="status">{availabilityMessage}</p>}
+        </form>
+      </aside>
+    </div>
   </section>;
 }
 
@@ -463,14 +501,47 @@ function SystemAdminDashboard({ t, clinics, overview, onRefresh, onError }) {
   }
   const total = (items) => (items ?? []).reduce((sum, item) => sum + item._count._all, 0);
   const countRole = (role) => overview?.users.find((item) => item.role === role)?._count._all ?? 0;
-  return <section className="requests-panel system-panel">
-    <h2>{t.systemOverview}</h2>
-    {!overview && <p>{t.loadingOverview}</p>}
-    {overview && <><div className="system-stats"><article><strong>{overview.clinics.length}</strong><span>{t.clinics}</span></article><article><strong>{countRole('PATIENT')}</strong><span>{t.patients}</span></article><article><strong>{countRole('CLINIC_ADMIN')}</strong><span>{t.clinicAdmins}</span></article><article><strong>{total(overview.requests)}</strong><span>{t.totalRequests}</span></article></div>
-      <h3>{t.systemClinics}</h3><ul className="system-clinic-list">{overview.clinics.map((clinic) => <li key={clinic.id}><strong>{clinic.publicName ?? clinic.nameKey}</strong><span>{clinic._count.users} {t.accounts} · {clinic._count.bookingRequests} {t.requestsLabel}</span></li>)}</ul>
-      <h3>{t.manageClinicAdmins}</h3><ul className="system-clinic-list">{overview.clinicAdmins.map((admin) => <li key={admin.id}><div><strong>{admin.displayName}</strong><span>{admin.email} · {admin.clinic?.publicName ?? admin.clinic?.nameKey ?? ''} · {admin.active ? t.active : t.disabled}</span></div><button type="button" className="text-button" onClick={() => setClinicAdminActive(admin.id, !admin.active)}>{admin.active ? t.disableAccount : t.enableAccount}</button></li>)}</ul>
-      <p className="field-hint">{t.requestStatuses}: {overview.requests.map((item) => `${t.statusLabels[item.status]} ${item._count._all}`).join(' · ')}</p></>}
-    <form className="invite-form" onSubmit={inviteClinicAdmin}><h3>{t.createClinicAdmin}</h3><label>{t.email}<input name="email" type="email" required /></label><label>{t.clinic}<select name="clinicId" required>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select></label><button className="primary-button" type="submit">{t.createInvite}</button>{inviteResult && <p className="field-hint">{t.inviteLink} <a href={inviteResult}>{inviteResult}</a></p>}</form>
+  return <section className="dashboard-panel system-panel" aria-labelledby="system-overview-title">
+    <header className="dashboard-heading"><h2 id="system-overview-title">{t.systemOverview}</h2></header>
+    {!overview ? <div className="system-overview-loading" aria-label={t.loadingOverview}><span /><span /><span /><span /></div> : <>
+      <div className="system-stats">
+        <article><strong>{overview.clinics.length}</strong><span>{t.clinics}</span></article>
+        <article><strong>{countRole('PATIENT')}</strong><span>{t.patients}</span></article>
+        <article><strong>{countRole('CLINIC_ADMIN')}</strong><span>{t.clinicAdmins}</span></article>
+        <article><strong>{total(overview.requests)}</strong><span>{t.totalRequests}</span></article>
+      </div>
+      <div className="system-overview-grid">
+        <section className="system-subsection" aria-labelledby="system-clinics-title">
+          <h3 id="system-clinics-title">{t.systemClinics}</h3>
+          <ul className="system-clinic-list">
+            {overview.clinics.map((clinic) => <li key={clinic.id}>
+              <div className="system-clinic-main"><strong>{clinic.publicName ?? clinic.nameKey}</strong><span className={`clinic-state ${clinic.active ? 'is-active' : 'is-disabled'}`}>{clinic.active ? t.active : t.disabled}</span></div>
+              <div className="system-clinic-counts"><span><strong>{clinic._count.users}</strong><small>{t.accounts}</small></span><span><strong>{clinic._count.bookingRequests}</strong><small>{t.requestsLabel}</small></span></div>
+            </li>)}
+          </ul>
+        </section>
+        <div className="system-admin-tools">
+          <section className="system-subsection" aria-labelledby="clinic-admins-title">
+            <h3 id="clinic-admins-title">{t.manageClinicAdmins}</h3>
+            {overview.clinicAdmins.length ? <ul className="system-clinic-admin-list">{overview.clinicAdmins.map((admin) => <li key={admin.id}>
+              <div className="clinic-admin-identity"><strong>{admin.displayName}</strong><span>{admin.email}</span><span>{admin.clinic?.publicName ?? admin.clinic?.nameKey ?? ''}</span></div>
+              <div className="clinic-admin-actions"><span className={`clinic-state ${admin.active ? 'is-active' : 'is-disabled'}`}>{admin.active ? t.active : t.disabled}</span><button type="button" className="text-button" onClick={() => setClinicAdminActive(admin.id, !admin.active)}>{admin.active ? t.disableAccount : t.enableAccount}</button></div>
+            </li>)}</ul> : <p className="queue-empty admin-empty">{t.noClinicAdmins}</p>}
+          </section>
+          <form className="invite-form dashboard-form system-invite-form" onSubmit={inviteClinicAdmin}>
+            <h3>{t.createClinicAdmin}</h3>
+            <label>{t.email}<input name="email" type="email" required /></label>
+            <label>{t.clinic}<select name="clinicId" required>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select></label>
+            <button className="primary-button" type="submit">{t.createInvite}</button>
+            {inviteResult && <p className="field-hint invite-result">{t.inviteLink} <a href={inviteResult}>{inviteResult}</a></p>}
+          </form>
+        </div>
+      </div>
+      <div className="request-status-summary" aria-label={t.requestStatuses}>
+        <h3>{t.requestStatuses}</h3>
+        <div>{overview.requests.map((item) => <span key={item.status}><strong>{item._count._all}</strong><span>{t.statusLabels[item.status]}</span></span>)}</div>
+      </div>
+    </>}
   </section>;
 }
 

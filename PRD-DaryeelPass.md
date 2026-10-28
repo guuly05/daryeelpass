@@ -9,10 +9,11 @@ DaryeelPass helps people in Hargeisa discover clinic contact information and sub
 ## User roles
 
 - **Patient:** register with email and password, browse clinics, request a time with a contact phone number, and track or cancel pending requests.
-- **Clinic staff:** accept a one-time admin invite for one clinic, enter availability, and mark requests confirmed in DaryeelPass or decline them.
-- **DaryeelPass admin:** create staff invites and manage local demo access.
+- **Staff:** accept a one-time clinic-admin invite for one clinic, enter availability, and help process requests.
+- **Clinic admin:** manage availability and booking requests for one assigned clinic, and invite staff for that clinic.
+- **System admin:** created through a setup-key protected first-run flow with a persistent completion marker; oversee all clinics, requests, and account counts; invite, disable, and re-enable clinic admins.
 
-Signup does not verify email. Email delivery, verification, password recovery, clinic system integration, and production identity are out of scope.
+Patient signup creates patient accounts only. Roles and clinic assignments cannot be selected during signup. The `SYSTEM_SETUP_KEY` must be a unique secret value; after initial setup it can be removed from the server environment. Signup does not verify email. Email delivery, verification, password recovery, clinic system integration, and production identity are out of scope.
 
 ## Availability and request semantics
 

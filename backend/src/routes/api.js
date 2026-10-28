@@ -73,7 +73,9 @@ apiRouter.post('/system/setup', rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, 
   if (!validSystemSetupKey(input.setupKey)) throw new HttpError(403, 'SETUP_KEY_INVALID', 'The system setup key is incorrect.');
   const passwordHash = await hashPassword(input.password);
   const user = await withAuthContext(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(4815162342)`;
+    await tx.$queryRaw`WITH setup_lock AS MATERIALIZED (
+      SELECT pg_advisory_xact_lock(4815162342)
+    ) SELECT true AS locked FROM setup_lock`;
     const existing = await tx.systemSetupState.findUnique({ where: { id: 'singleton' }, select: { id: true } });
     if (existing) throw new HttpError(409, 'SYSTEM_ALREADY_SETUP', 'System admin setup has already been completed.');
     const created = await tx.user.create({

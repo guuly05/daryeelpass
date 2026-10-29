@@ -482,7 +482,7 @@ npm run test:integration
 npm test
 ```
 
-The unit suite covers token helpers and a legacy appointment formatter. The API integration suite exercises unauthenticated access and CORS, sourced clinic and availability responses, patient registration and request cancellation, and one-time system-admin setup with clinic-admin invitation and access. These tests use the actual PostgreSQL database configured by `DATABASE_URL` and expect seeded clinic records.
+The unit suite covers token helpers and a retained legacy appointment formatter that current routes do not use. The API integration suite exercises unauthenticated access and CORS, sourced clinic and availability responses, patient registration and request cancellation, rejection of patient access to staff-only routes, and one-time system-admin setup with clinic-admin invitation and access. These tests use the PostgreSQL database configured by `DATABASE_URL` and expect seeded clinic records.
 
 **Use a dedicated, disposable test database for `npm run test:integration` and `npm test`.** The integration suite writes users, requests, and invitation data and permanently creates the singleton first-admin setup marker. It does not clean up its records and expects first-admin setup to be available at the start, so the integration suite cannot be safely repeated against the same database and must never point at a shared development or production database. For each integration run, use an isolated database with migrations deployed, the runtime role configured, clinic seed data loaded, and a test-only `SYSTEM_SETUP_KEY`. Unit tests do not require the database.
 

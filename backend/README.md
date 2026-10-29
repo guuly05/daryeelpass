@@ -28,7 +28,9 @@ To stop the local database later, run `docker-compose down`. The named volume ke
 
 ## Tests
 
-- Unit and integration tests in this repository still describe the retired appointment/check-in flow and need to be rewritten for account and booking-request behavior.
+- The unit suite covers opaque-token helpers and a retained legacy appointment formatter. The formatter is not used by the current routes.
+- The PostgreSQL integration suite covers authentication requirements and CORS, the clinic directory and availability, patient booking-request creation/listing/cancellation, rejection of patient access to staff-only routes, and one-time system-admin setup with clinic-admin invitation.
+- Run `npm run test:unit` freely; it does not need a database. Run `npm run test:integration` only against a dedicated, disposable PostgreSQL database with migrations and seed data applied. The suite creates accounts and permanently consumes the singleton first-admin setup marker, so it is not repeatable against the same database.
 
 ## API overview
 

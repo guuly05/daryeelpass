@@ -232,6 +232,8 @@ function App() {
       </header>
 
       <main id="main" className="main-content">
+        {authUser?.role === 'SYSTEM_ADMIN' && <SystemAdminDashboard t={t} clinics={clinics} overview={systemOverview} onRefresh={() => fetch(`${API_BASE}/system/overview`, { credentials: 'include' }).then((response) => response.json()).then((result) => setSystemOverview(result.data ?? null))} onError={(message) => setToast(message)} />}
+        {['STAFF', 'CLINIC_ADMIN', 'SYSTEM_ADMIN'].includes(authUser?.role) && <StaffDashboard t={t} requests={staffRequests} clinics={clinics} authUser={authUser} onRefresh={() => fetch(`${API_BASE}/staff/booking-requests`, { credentials: 'include' }).then((r) => r.json()).then((r) => setStaffRequests(r.data ?? []))} onError={(message) => setToast(message)} />}
         <ClinicDirectory t={t} language={language} clinics={clinics} loading={directoryLoading} error={directoryError} search={clinicSearch} onSearch={setClinicSearch} onBook={(clinic) => authUser ? setBookingClinic(clinic) : setShowLogin(true)} />
         {authUser?.role === 'PATIENT' && <PatientRequests t={t} requests={bookingRequests} onCancel={async (id) => {
           try {
@@ -366,7 +368,7 @@ function SystemSetupDialog({ t, onCreated }) {
         <label>{t.setupKey}<input name="setupKey" type="password" autoComplete="off" required minLength={32} /></label>
         <label>{t.name}<input name="displayName" autoComplete="name" required minLength={2} maxLength={120} /></label>
         <label>{t.email}<input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
-        <label>{t.password}<input name="password" type="password" autoComplete="new-password" required minLength={10} maxLength={128} /></label>
+        <label>{t.password}<input name="password" type="password" autoComplete="new-password" required minLength={9} maxLength={128} /></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="primary-button full-button" type="submit" disabled={busy}>{busy ? t.pleaseWait : t.createSystemAdmin}<ArrowRight size={17} /></button>
       </form>

@@ -68,7 +68,7 @@ apiRouter.post('/system/setup', rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, 
     setupKey: z.string().min(1).max(256),
     email: z.string().trim().email().max(254),
     displayName: z.string().trim().min(2).max(120),
-    password: z.string().min(10).max(128)
+    password: z.string().min(9).max(128)
   }).strict().parse(req.body);
   if (!validSystemSetupKey(input.setupKey)) throw new HttpError(403, 'SETUP_KEY_INVALID', 'The system setup key is incorrect.');
   const passwordHash = await hashPassword(input.password);

@@ -90,6 +90,16 @@ test('registers a patient and creates and cancels an in-app booking request', as
   assert.equal(created.data.data.source, 'suggested');
   assert.equal(created.data.data.phone, '+252 63 1234567');
 
+  const patientCannotReadStaffQueue = await request('/api/v1/staff/booking-requests', { cookie });
+  assert.equal(patientCannotReadStaffQueue.response.status, 403);
+  assert.equal(patientCannotReadStaffQueue.data.error.code, 'FORBIDDEN');
+
+  const patientCannotChangeRequestStatus = await request(`/api/v1/staff/booking-requests/${created.data.data.id}`, {
+    method: 'PATCH', cookie, body: { status: 'CONFIRMED' }
+  });
+  assert.equal(patientCannotChangeRequestStatus.response.status, 403);
+  assert.equal(patientCannotChangeRequestStatus.data.error.code, 'FORBIDDEN');
+
   const listed = await request('/api/v1/booking-requests', { cookie });
   assert.ok(listed.data.data.some((item) => item.id === created.data.data.id));
 
